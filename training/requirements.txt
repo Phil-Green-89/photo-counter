@@ -1,0 +1,8 @@
+# Data prep + tests need only the first two. Training/export/eval need the rest (use a free Kaggle/Colab GPU).
+numpy
+pillow
+ultralytics     # AGPL-3.0: fine while this repo is public/open source
+onnx
+onnxruntime
+onnxslim
+roboflow        # only for prepare_data.py --roboflow

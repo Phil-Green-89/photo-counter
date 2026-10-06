@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { Viewer } from './ui/Viewer'
 import { autoContrast, countSimilar, toGray, type Box, type Dot, type Gray } from './infer/exemplar'
 import { lightingScore, type Lighting } from './infer/lighting'
+import { detect, detectorVersion, loadDetector } from './infer/detector'
 import {
   bumpUse, getConsent, orderedItems, pendingCount, saveFeedback, setConsent, updateFeedback,
   type FeedbackRecord, type ItemId,
@@ -10,7 +11,9 @@ import { syncConfig, syncPending } from './feedback/sync'
 import './app.css'
 
 type Step = 'home' | 'pick' | 'edit'
-const MODEL_VERSION = 'ncc-v0'
+const TAP_ONE_VERSION = 'ncc-v0'
+/** Items the end-on circle detector was trained for; everything else uses tap-one. */
+const DETECTOR_ITEMS: ItemId[] = ['pipes', 'rebar']
 
 export function App() {
   const items = orderedItems()
@@ -33,6 +36,9 @@ export function App() {
   const undo = useRef<Dot[][]>([])
   const record = useRef<FeedbackRecord | null>(null)
   const input = useRef<HTMLInputElement>(null)
+  const modelVersion = useRef(TAP_ONE_VERSION)
+  const photo = useRef<HTMLImageElement | null>(null)
+  const [missed, setMissed] = useState(false)
   const canShare = syncConfig() !== null
 
   const refreshPending = () => pendingCount().then(setPending)
@@ -41,6 +47,7 @@ export function App() {
   useEffect(() => {
     refreshPending()
     sync()
+    loadDetector() // warm the model in the background so the first count is quick
     window.addEventListener('online', sync)
     return () => window.removeEventListener('online', sync)
   }, [])
@@ -62,11 +69,32 @@ export function App() {
       gray.current = autoContrast(raw)
       setSize({ w: img.naturalWidth, h: img.naturalHeight })
       if (src) URL.revokeObjectURL(src)
-      setSrc(url); setBox(null); setDots([]); setThumb(null)
+      photo.current = img
+      setSrc(url); setBox(null); setDots([]); setThumb(null); setMissed(false)
       undo.current = []; record.current = null
+      modelVersion.current = TAP_ONE_VERSION
       setStep('pick')
+      if (DETECTOR_ITEMS.includes(item)) autoCount(img)
     }
     img.src = url
+  }
+
+  /** Pipes/rebar: the trained detector counts straight away. If it is absent or finds nothing, the user draws a box. */
+  const autoCount = async (img: HTMLImageElement) => {
+    setBusy(true)
+    try {
+      const version = await detectorVersion()
+      const res = version ? await detect(img, img.naturalWidth, img.naturalHeight) : null
+      if (res && res.dots.length > 0) {
+        const { w, h } = res.median
+        modelVersion.current = version!
+        modelDots.current = res.dots
+        setBox({ x: res.dots[0].x - w / 2, y: res.dots[0].y - h / 2, w, h })
+        setDots(res.dots); setStep('edit'); bumpUse(item)
+      } else if (version) setMissed(true)
+    } catch {
+      setMissed(true)
+    } finally { setBusy(false) }
   }
 
   const run = (b: Box) => {
@@ -88,7 +116,7 @@ export function App() {
     const rec: FeedbackRecord = {
       ...(record.current ?? {}), at: record.current?.at ?? Date.now(), item, image: file.current,
       imgW: size.w, imgH: size.h, exemplar: box, modelDots: modelDots.current, finalDots,
-      thumbsUp: up, lighting: light, modelVersion: MODEL_VERSION, uploaded: 0,
+      thumbsUp: up, lighting: light, modelVersion: modelVersion.current, uploaded: 0,
     }
     if (record.current?.id !== undefined) await updateFeedback(rec)
     else rec.id = (await saveFeedback(rec)) ?? undefined
@@ -166,7 +194,7 @@ export function App() {
       {step !== 'home' && (
         <>
           <div class="top">
-            {step === 'pick' ? <div class="hint">👆 Draw a box around ONE {cur.label.toLowerCase()}</div>
+            {step === 'pick' ? <div class="hint">{missed ? '🤷 ' : ''}👆 Draw a box around ONE {cur.label.toLowerCase()}</div>
               : <div class="count" aria-live="polite" data-testid="count">{dots.length}</div>}
             {light && light.bucket !== 'good' && <div class="warn">🔦 {light.bucket === 'poor' ? 'Dark' : 'Dim'}</div>}
           </div>

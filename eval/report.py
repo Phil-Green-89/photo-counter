@@ -35,7 +35,7 @@ def summarise(records):
 
 
 def render(rows) -> str:
-    head = f"{'model':<10}{'light':<7}{'photos':>7}{'MAE':>8}{'exact':>8}{'±1':>8}{'👍':>8}"
+    head = f"{'model':<10}{'light':<7}{'photos':>7}{'MAE':>8}{'exact':>8}{'+-1':>8}{'thumbs':>8}"
     lines = [head, "-" * len(head)]
     for g in rows:
         up = "-" if g["thumbs_up"] is None else f"{g['thumbs_up']:.0%}"

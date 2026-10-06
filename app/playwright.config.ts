@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
-  use: { baseURL: 'http://localhost:4173', trace: 'retain-on-failure' },
+  use: { baseURL: 'http://localhost:4173', trace: 'retain-on-failure', serviceWorkers: 'block' }, // SW would bypass page.route mocks
   // Phone-sized, touch-enabled: the app is built for this
   projects: [{ name: 'phone', use: { ...devices['Pixel 7'] } }],
   webServer: {
