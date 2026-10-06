@@ -124,7 +124,7 @@ export function countSimilar(g: Gray, box: Box, { threshold }: Params): Dot[] {
   return kept.map(k => ({ x: (k.x + tw / 2) * back, y: (k.y + th / 2) * back }))
 }
 
-function resize(g: Gray, f: number): Gray {
+export function resize(g: Gray, f: number): Gray {
   const w = Math.max(1, Math.round(g.w * f)), h = Math.max(1, Math.round(g.h * f))
   const data = new Float32Array(w * h)
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -136,4 +136,47 @@ function resize(g: Gray, f: number): Gray {
     data[y * w + x] = s / c
   }
   return { data, w, h, scale: g.scale / f }
+}
+
+/**
+ * "Tap one item": work out how big the tapped item is by trying templates of growing size centred on the tap.
+ * The right size is the middle of the longest run of sizes that find a stable number of copies (smaller templates
+ * match sub-parts and over-count, larger ones span several items and under-count). Returns a box in full-size image pixels, or null if no size finds a second copy.
+ */
+export function estimateItemBox(g: Gray, tap: Dot): Box | null {
+  const coarseW = 360
+  const f = Math.min(1, coarseW / Math.max(g.w, g.h))
+  const c = f < 1 ? resize(g, f) : g
+  const cx = tap.x / c.scale, cy = tap.y / c.scale // tap in coarse pixels
+  const area = c.w * c.h
+  const maxHalf = Math.min(c.w, c.h) / 4
+
+  const found: { half: number; count: number }[] = []
+  for (let half = 4; half <= maxHalf; half *= 1.2) {
+    const x = Math.round(cx - half), y = Math.round(cy - half), s = Math.round(half * 2)
+    if (x < 0 || y < 0 || x + s > c.w || y + s > c.h) break
+    // the patch must have texture of its own, or it "matches" every flat patch in the photo
+    let sum = 0, sum2 = 0
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) { const v = c.data[(y + j) * c.w + x + i]; sum += v; sum2 += v * v }
+    const n = s * s
+    if (Math.sqrt(Math.max(0, sum2 / n - (sum / n) ** 2)) < 10) continue
+    const hits = countSimilar(c, { x: x * c.scale, y: y * c.scale, w: s * c.scale, h: s * c.scale }, { threshold: 0.7 })
+    if (hits.length < 2 || hits.length * s * s > 0.85 * area) continue
+    found.push({ half, count: hits.length })
+  }
+  if (!found.length) return null
+
+  // Group consecutive sizes that find about the same number of copies. Sub-parts of an item find too many
+  // (several per item), templates spanning several items find too few, and the real item size sits in the
+  // longest stable run, so take the middle of that run.
+  let best = { lo: found[0].half, hi: found[0].half }
+  let run = { lo: found[0].half, hi: found[0].half, ref: found[0].count }
+  for (const r of found.slice(1)) {
+    if (r.count >= run.ref * 0.85 && r.count <= run.ref * 1.18) run.hi = r.half
+    else run = { lo: r.half, hi: r.half, ref: r.count }
+    if (run.hi / run.lo > best.hi / best.lo) best = { lo: run.lo, hi: run.hi }
+  }
+  const half = Math.sqrt(best.lo * best.hi)
+  const side = half * 2 * c.scale // coarse px -> full-size photo px
+  return { x: tap.x - side / 2, y: tap.y - side / 2, w: side, h: side }
 }

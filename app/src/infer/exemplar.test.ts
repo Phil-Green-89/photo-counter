@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoContrast, countSimilar } from './exemplar'
+import { autoContrast, countSimilar, estimateItemBox } from './exemplar'
 import { discs, grid } from './testutil'
 
 describe('countSimilar', () => {
@@ -44,5 +44,35 @@ describe('autoContrast', () => {
   it('stretches a dim image toward the full range', () => {
     const out = autoContrast(discs(100, 100, [[50, 50]], 20, 0.25))
     expect(Math.max(...out.data)).toBeGreaterThan(200)
+  })
+})
+
+describe('estimateItemBox (tap one item)', () => {
+  const centers = grid(6, 4)
+  const g = discs(280, 190, centers)
+
+  it('finds the size of the tapped disc well enough to count all of them', () => {
+    const box = estimateItemBox(g, { x: 30, y: 30 })!
+    expect(box).not.toBeNull()
+    expect(box.w).toBeGreaterThan(20)
+    expect(box.w).toBeLessThan(44)
+    expect(countSimilar(g, box, { threshold: 0.6 })).toHaveLength(24)
+  })
+
+  it('works when you tap a disc in the middle of the bundle', () => {
+    const box = estimateItemBox(g, { x: 110, y: 110 })!
+    expect(countSimilar(g, box, { threshold: 0.6 })).toHaveLength(24)
+  })
+
+  it('works on a noisy dim photo', () => {
+    const rng = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647) })()
+    const dim = discs(280, 190, centers, 14, 0.4)
+    for (let i = 0; i < dim.data.length; i++) dim.data[i] += (rng() - 0.5) * 12
+    const box = estimateItemBox(autoContrast(dim), { x: 70, y: 70 })!
+    expect(countSimilar(autoContrast(dim), box, { threshold: 0.6 }).length).toBeGreaterThanOrEqual(22)
+  })
+
+  it('returns null on a featureless photo', () => {
+    expect(estimateItemBox(discs(280, 190, []), { x: 100, y: 90 })).toBeNull()
   })
 })

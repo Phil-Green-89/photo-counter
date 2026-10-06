@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { Viewer } from './ui/Viewer'
 import { Icon, ItemIcon, Logo } from './ui/icons'
-import { autoContrast, countSimilar, toGray, type Box, type Dot, type Gray } from './infer/exemplar'
+import { autoContrast, countSimilar, estimateItemBox, toGray, type Box, type Dot, type Gray } from './infer/exemplar'
 import { lightingScore, type Lighting } from './infer/lighting'
 import { detect, detectorVersion, loadDetector } from './infer/detector'
 import {
@@ -42,6 +42,9 @@ export function App() {
   const [missed, setMissed] = useState(false)
   const canShare = syncConfig() !== null
   const [toast, setToast] = useState('')
+  /** counts of earlier photos in this job; the total is their sum plus the photo on screen */
+  const [session, setSession] = useState<number[]>([])
+  const pendingAdd = useRef<number | null>(null)
   const [coach, setCoach] = useState(() => { try { return localStorage.getItem('pc.coach') !== '1' } catch { return true } })
   const usual = items[0]
 
@@ -77,6 +80,7 @@ export function App() {
       setSize({ w: img.naturalWidth, h: img.naturalHeight })
       if (src) URL.revokeObjectURL(src)
       photo.current = img
+      if (pendingAdd.current !== null) { const n = pendingAdd.current; pendingAdd.current = null; setSession(s => [...s, n]) }
       setSrc(url); setBox(null); setDots([]); setThumb(null); setMissed(false)
       undo.current = []; record.current = null
       modelVersion.current = TAP_ONE_VERSION
@@ -102,6 +106,16 @@ export function App() {
     } catch {
       setMissed(true)
     } finally { setBusy(false) }
+  }
+
+  /** Tap one item: work out its size from the photo, then count like it. */
+  const tapOne = (d: Dot) => {
+    setBusy(true)
+    setTimeout(() => {
+      const b = estimateItemBox(gray.current!, d)
+      setBusy(false)
+      if (b) { setMissed(false); run(b) } else setMissed(true)
+    }, 30)
   }
 
   const run = (b: Box) => {
@@ -168,10 +182,18 @@ export function App() {
     else { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
   }
 
-  const goHome = () => { setStep('home'); leave().then(maybeAsk) }
+  const goHome = () => { setStep('home'); setSession([]); pendingAdd.current = null; leave().then(maybeAsk) }
+
+  /** Keep this photo's count and shoot another; the total keeps adding up. */
+  const addAnother = () => {
+    pendingAdd.current = dots.length
+    flash('Keep photos from overlapping')
+    leave().then(camera)
+  }
   const camera = () => input.current?.click()
   const cur = items.find(i => i.id === item)!
   const rest = items.filter(i => i.id !== usual.id)
+  const one = cur.label.toLowerCase().replace(/s$/, '')
   const darkChip = light && light.bucket !== 'good' ? (light.bucket === 'poor' ? 'Dark' : 'Dim') : null
 
   return (
@@ -219,7 +241,7 @@ export function App() {
 
       {step !== 'home' && (
         <div class="stage">
-          <Viewer src={src} imgW={size.w} imgH={size.h} mode={step} dots={dots} box={step === 'pick' ? box : null} onBox={run}
+          <Viewer src={src} imgW={size.w} imgH={size.h} mode={step} dots={dots} box={step === 'pick' ? box : null} onBox={run} onTap={tapOne}
             insetTop={step === 'pick' ? 96 : 132} insetBottom={116}
             onAdd={d => { edit([...dots, d]); dismissCoach() }}
             onRemove={i => { edit(dots.filter((_, j) => j !== i)); dismissCoach() }} />
@@ -228,12 +250,20 @@ export function App() {
             {step === 'pick' ? (
               <div class={`ask ${missed ? 'missed' : ''}`} data-testid="hint">
                 <span class="ask-ic"><Icon name="draw" size={26} /></span>
-                <span class="hint">{missed ? 'Nothing found. ' : ''}Draw a box around ONE {cur.label.toLowerCase().replace(/s$/, '')}</span>
+                <span class="hint">
+                  {missed ? <>Nothing found. Draw a box around ONE {one}</> : <>Tap ONE {one}</>}
+                  {!missed && <small>or draw a box around it</small>}
+                </span>
               </div>
             ) : (
               <div class="readout">
                 <div class="count" key={dots.length} aria-live="polite" data-testid="count">{dots.length}</div>
                 <div class="what"><ItemIcon id={item} size={22} /><span>{cur.label}</span></div>
+                {session.length > 0 && (
+                  <div class="total" data-testid="total">
+                    <span>Total</span><b>{session.reduce((x, y) => x + y, 0) + dots.length}</b><small>{session.length + 1} photos</small>
+                  </div>
+                )}
               </div>
             )}
             {darkChip && <div class="warn"><Icon name="moon" size={18} /> {darkChip}</div>}
@@ -241,6 +271,12 @@ export function App() {
 
           {busy && <div class="busy"><div class="scan" /><div class="pill"><span class="spin" /> Counting</div></div>}
           {toast && <div class="toast" role="status"><Icon name="check" size={18} /> {toast}</div>}
+
+          {step === 'edit' && (
+            <button class="add-photo" aria-label="Add another photo" onClick={addAnother}>
+              <Icon name="camera" size={22} /><Icon name="plus" size={18} /><span>Add photo</span>
+            </button>
+          )}
 
           {step === 'edit' && coach && (
             <div class="coach">
