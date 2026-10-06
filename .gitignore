@@ -11,3 +11,6 @@ test-results
 playwright-report
 !app/e2e/fixtures/*.onnx
 !app/public/models/*.onnx
+data/
+runs/
+*.pt

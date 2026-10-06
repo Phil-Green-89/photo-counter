@@ -49,6 +49,25 @@ Reading data needs the **service** key, which only lives on your machine for the
 Limitation: anyone with the public key can insert junk (inserts are only shape-checked). Fine for a pilot; add
 Supabase rate limits or a Cloudflare Turnstile + edge function before wide release.
 
+## Pipe / rebar detector
+
+Pipes and Rebar count automatically with a YOLO-nano model that runs in the browser (onnxruntime-web, no server).
+Other items, or any photo where the model finds nothing, use the draw-a-box tap-one counter.
+The app looks for `app/public/models/manifest.json`; with no model installed it just uses tap-one.
+
+```bash
+pip install -r training/requirements.txt          # in Colab/Kaggle for a GPU
+python training/prepare_data.py data/ --roboflow --synthetic 300   # needs a free ROBOFLOW_API_KEY
+python training/train_pipes.py data/ --epochs 80 --version pipes-v1
+python training/eval_counts.py data/ app/public/models              # MAE per light level on held-out photos
+git add app/public/models && git commit                            # deploy = commit pipes.onnx + manifest.json
+```
+
+- Every dataset becomes one class ("item"); `prepare_data.py` also adds low-light and noisy copies of every training image.
+- Big photos with tiny pipes: if the median item is under ~22 px at the model's 640 px input, the app re-runs on 2x2 (or 3x3) zoomed tiles and merges them.
+- `training/make_stub_model.py` builds a fake model the Playwright tests use to cover the whole browser path.
+- Public datasets are listed in `training/datasets.json`; `prepare_data.py` writes `ATTRIBUTION.md` next to the model. Check each licence before shipping.
+
 ## Learn from corrections
 
 ```bash
@@ -67,5 +86,6 @@ Push to `main` → `.github/workflows/deploy.yml` publishes to GitHub Pages
 ## What exists vs what's next
 
 - ✅ Tap-one counting (template matching), lighting score + contrast boost, zoom/pan editing, item grid with habit memory, offline feedback queue, opt-in sync, export + report tooling, CI.
-- ⏭ ONNX models: YOLO-nano pipe detector, DINOv2-small tap-one counter, tiled inference (see plan; needs a phone speed test first).
+- ✅ In-app detector runtime, tiling, and the full training/eval pipeline. ⏭ Train on real public data, then speed-test on real phones.
+- ⏭ DINOv2-small tap-one counter (needs a phone speed test first).
 - Not verified: the SQL migration has not been run against a real Supabase project yet.
