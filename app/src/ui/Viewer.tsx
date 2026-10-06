@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { Box, Dot } from '../infer/exemplar'
+import { Icon } from './icons'
 
 interface Props {
   src: string
@@ -11,6 +12,9 @@ interface Props {
   onBox: (b: Box) => void
   onAdd: (d: Dot) => void
   onRemove: (i: number) => void
+  /** space reserved for the overlays above/below, so the photo is never hidden under them */
+  insetTop?: number
+  insetBottom?: number
 }
 
 interface View { k: number; tx: number; ty: number }
@@ -32,14 +36,16 @@ export function Viewer(p: Props) {
     const fit = () => {
       const r = host.current!.getBoundingClientRect()
       if (!r.width || !r.height) return
-      const k = Math.min(r.width / p.imgW, r.height / p.imgH)
+      const top = p.insetTop ?? 0, bottom = p.insetBottom ?? 0
+      const availH = Math.max(80, r.height - top - bottom)
+      const k = Math.min(r.width / p.imgW, availH / p.imgH)
       setFitK(k)
-      setView({ k, tx: (r.width - p.imgW * k) / 2, ty: (r.height - p.imgH * k) / 2 })
+      setView({ k, tx: (r.width - p.imgW * k) / 2, ty: top + (availH - p.imgH * k) / 2 })
     }
     fit()
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
-  }, [p.src, p.imgW, p.imgH])
+  }, [p.src, p.imgW, p.imgH, p.insetTop, p.insetBottom])
 
   const toImg = (cx: number, cy: number, v = view) => {
     const r = host.current!.getBoundingClientRect()
@@ -123,28 +129,30 @@ export function Viewer(p: Props) {
     setView(v => zoomAt(v, e.clientX, e.clientY, v.k * 2))
   }
 
-  const dotPx = 28
+  // dense photos get smaller hit targets; numbers appear once you are zoomed in enough to read them
+  const dotPx = p.dots.length > 120 ? 24 : 34
+  const showNum = view.k > fitK * 2.2 && p.dots.length <= 400
   const shown = draft ?? p.box
   return (
-    <div class="viewer" ref={host}
+    <div class={`viewer ${p.mode}`} ref={host}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onDblClick={dblClick}>
       <div class="inner" style={{ width: p.imgW, height: p.imgH, transform: `translate(${view.tx}px,${view.ty}px) scale(${view.k})` }}>
         <img src={p.src} width={p.imgW} height={p.imgH} draggable={false} />
         {shown && (
-          <div class="box" style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, borderWidth: 3 / view.k }} />
+          <div class="box" style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, borderWidth: 3 / view.k, borderRadius: 6 / view.k }} />
         )}
         {p.dots.map((d, i) => (
-          <button key={i} class="dot"
+          <button key={i} class="dot" aria-label={`Remove ${i + 1}`}
             style={{ left: d.x, top: d.y, width: dotPx, height: dotPx, transform: `translate(-50%,-50%) scale(${1 / view.k})` }}
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); p.onRemove(i) }}>
-            {i + 1}
+            <span class="ring" style={{ minWidth: dotPx * 0.62, height: dotPx * 0.62 }}>{showNum && <i>{i + 1}</i>}</span>
           </button>
         ))}
       </div>
       <div class="zoom">
-        <button aria-label="Zoom in" onPointerDown={e => e.stopPropagation()} onClick={() => zoomButton(1.6)}>＋</button>
-        <button aria-label="Zoom out" onPointerDown={e => e.stopPropagation()} onClick={() => zoomButton(1 / 1.6)}>－</button>
+        <button aria-label="Zoom in" onPointerDown={e => e.stopPropagation()} onClick={() => zoomButton(1.6)}><Icon name="plus" /></button>
+        <button aria-label="Zoom out" onPointerDown={e => e.stopPropagation()} onClick={() => zoomButton(1 / 1.6)}><Icon name="minus" /></button>
       </div>
     </div>
   )
