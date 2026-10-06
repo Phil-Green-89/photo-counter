@@ -1,0 +1,30 @@
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #app { margin: 0; height: 100%; background: #0b0f14; color: #fff; font-family: system-ui, sans-serif; }
+.app { height: 100dvh; display: flex; flex-direction: column; }
+button { font: inherit; color: inherit; border: 0; cursor: pointer; }
+
+.home { flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 16px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; align-content: start; overflow: auto; }
+.tile { min-height: 96px; border-radius: 20px; background: #1c2530; font-size: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 3px solid transparent; }
+.tile .ic { font-size: 40px; }
+.tile.on { border-color: #22c55e; background: #14301f; }
+.shoot { height: 110px; border-radius: 28px; background: #22c55e; font-size: 52px; }
+
+.top { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; min-height: 84px; }
+.count { font-size: 72px; font-weight: 800; line-height: 1; }
+.hint { font-size: 22px; }
+.warn { background: #b45309; border-radius: 12px; padding: 6px 12px; font-size: 20px; }
+
+.viewer { position: relative; flex: 1; overflow: hidden; touch-action: none; background: #000; }
+.inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.inner img { display: block; user-select: none; pointer-events: none; }
+.box { position: absolute; border: solid #facc15; pointer-events: none; }
+.dot { position: absolute; border-radius: 50%; background: #16a34a; border: 2px solid #fff; padding: 0; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.zoom { position: absolute; right: 10px; bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
+.zoom button { width: 56px; height: 56px; border-radius: 50%; background: rgba(0,0,0,.65); font-size: 30px; }
+.busy { position: absolute; inset: 0; display: grid; place-items: center; font-size: 80px; background: rgba(0,0,0,.4); pointer-events: none; }
+
+.bar { display: flex; gap: 10px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
+.bar button { flex: 1; height: 64px; border-radius: 18px; background: #1c2530; font-size: 30px; }
+.bar button:disabled { opacity: .35; }
+.bar button.sel { background: #22c55e; }
