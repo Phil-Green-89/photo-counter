@@ -21,7 +21,15 @@ export default defineConfig({
           { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,onnx,wasm}'] },
+      workbox: {
+        // app shell is precached; the 14 MB wasm runtime and the model are cached on first use
+        globPatterns: ['**/*.{js,css,html,svg}'],
+        runtimeCaching: [{
+          urlPattern: ({ url }) => /\.(wasm|onnx)$/.test(url.pathname) || url.pathname.endsWith('/models/manifest.json'),
+          handler: 'StaleWhileRevalidate',
+          options: { cacheName: 'ml', cacheableResponse: { statuses: [200] } },
+        }],
+      },
     }),
   ],
 })

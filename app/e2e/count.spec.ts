@@ -119,3 +119,75 @@ test('opt-out: saying no never uploads', async ({ page }) => {
   await page.waitForTimeout(500)
   expect(hits).toBe(0)
 })
+
+// ---- trained detector path (stub ONNX model: always "finds" a fixed 5x4 lattice) ----
+import { readFileSync } from 'node:fs'
+
+const STUB = readFileSync(new URL('./fixtures/stub-pipes.onnx', import.meta.url))
+
+async function installModel(page: Page, conf = 0.25) {
+  await page.route('**/models/manifest.json', r => r.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ version: 'stub-1', file: 'pipes.onnx', inputSize: 640, numClasses: 1, conf, iou: 0.5 }),
+  }))
+  await page.route('**/models/pipes.onnx', r => r.fulfill({ contentType: 'application/octet-stream', body: STUB }))
+}
+
+test('pipes: the detector counts straight away, no box needed', async ({ page }) => {
+  await installModel(page)
+  await page.goto('/')
+  const photo = await makePhoto(page)
+  await page.getByTestId('camera').setInputFiles({ name: 'p.png', mimeType: 'image/png', buffer: photo.png })
+  await expect(page.getByTestId('count')).toHaveText('20', { timeout: 20_000 })
+  await expect(page.locator('.dot')).toHaveCount(20)
+  // dots map back inside the photo
+  const v = (await page.locator('.viewer img').boundingBox())!
+  for (const d of await page.locator('.dot').all()) {
+    const b = (await d.boundingBox())!
+    expect(b.x + b.width / 2).toBeGreaterThan(v.x - 1)
+    expect(b.x + b.width / 2).toBeLessThan(v.x + v.width + 1)
+  }
+})
+
+test('pipes: detector results are editable and recorded with the model version', async ({ page }) => {
+  await installModel(page)
+  const rows: string[] = []
+  await page.route('https://demo.supabase.co/**', route => {
+    const b = route.request().postData()
+    if (b && b.startsWith('{')) rows.push(b)
+    route.fulfill({ status: 201, body: '' })
+  })
+  await page.goto('/')
+  const photo = await makePhoto(page)
+  await page.getByTestId('camera').setInputFiles({ name: 'p.png', mimeType: 'image/png', buffer: photo.png })
+  await expect(page.getByTestId('count')).toHaveText('20', { timeout: 20_000 })
+  await page.locator('.dot').first().click()
+  await page.getByRole('button', { name: 'Wrong' }).click()
+  await page.getByRole('button', { name: 'Yes, share' }).click()
+  await expect.poll(() => rows.length).toBe(1)
+  const row = JSON.parse(rows[0])
+  expect(row.model_version).toBe('stub-1')
+  expect(row.model_dots).toHaveLength(20)
+  expect(row.final_dots).toHaveLength(19)
+})
+
+test('pipes: if the detector finds nothing the user can still draw a box', async ({ page }) => {
+  await installModel(page, 0.95) // stub confidence is 0.9, so nothing passes
+  await page.goto('/')
+  const photo = await makePhoto(page)
+  await page.getByTestId('camera').setInputFiles({ name: 'p.png', mimeType: 'image/png', buffer: photo.png })
+  await expect(page.locator('.hint')).toContainText('🤷', { timeout: 20_000 })
+  await boxFirstItem(page)
+  await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
+})
+
+test('other items keep using tap-one even when a model is installed', async ({ page }) => {
+  await installModel(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: /Boxes/ }).click()
+  const photo = await makePhoto(page)
+  await page.getByTestId('camera').setInputFiles({ name: 'p.png', mimeType: 'image/png', buffer: photo.png })
+  await expect(page.locator('.hint')).toBeVisible()
+  await boxFirstItem(page)
+  await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
+})
