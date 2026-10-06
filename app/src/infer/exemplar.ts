@@ -180,3 +180,54 @@ export function estimateItemBox(g: Gray, tap: Dot): Box | null {
   const side = half * 2 * c.scale // coarse px -> full-size photo px
   return { x: tap.x - side / 2, y: tap.y - side / 2, w: side, h: side }
 }
+
+/**
+ * How squashed is the item at the tap? Looks at the dark opening under the tap (tube/pipe ends are dark inside),
+ * returns height/width of that blob, or null if there is no clear dark blob. Used to stretch a straightened view
+ * until ends are round.
+ */
+export function holeAspect(g: Gray, tap: Dot): number | null {
+  const cx = Math.round(tap.x / g.scale), cy = Math.round(tap.y / g.scale)
+  const R = 45
+  const x0 = Math.max(0, cx - R), y0 = Math.max(0, cy - R), x1 = Math.min(g.w, cx + R + 1), y1 = Math.min(g.h, cy + R + 1)
+  const w = x1 - x0, h = y1 - y0
+  if (w < 20 || h < 20) return null
+  // threshold: midway between the darkest 5% and the median of the patch
+  const vals: number[] = []
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) vals.push(g.data[y * g.w + x])
+  vals.sort((a, b) => a - b)
+  const lo = vals[Math.floor(vals.length * 0.05)], med = vals[Math.floor(vals.length * 0.5)]
+  if (med - lo < 25) return null
+  const thr = lo + (med - lo) * 0.35
+  // start from the darkest pixel within a few px of the tap, then flood fill the connected dark region
+  let sx = -1, sy = -1, best = Infinity
+  for (let y = Math.max(y0, cy - 6); y < Math.min(y1, cy + 7); y++) for (let x = Math.max(x0, cx - 6); x < Math.min(x1, cx + 7); x++) {
+    const v = g.data[y * g.w + x]
+    if (v < best) { best = v; sx = x; sy = y }
+  }
+  if (sx < 0 || best > thr) return null
+  const seen = new Uint8Array(w * h)
+  const stack = [[sx, sy]]
+  seen[(sy - y0) * w + (sx - x0)] = 1
+  let n = 0, mx = 0, my = 0, mxx = 0, myy = 0, mxy = 0
+  while (stack.length) {
+    const [x, y] = stack.pop()!
+    n++; mx += x; my += y; mxx += x * x; myy += y * y; mxy += x * y
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy
+      if (nx < x0 || ny < y0 || nx >= x1 || ny >= y1) continue
+      const k = (ny - y0) * w + (nx - x0)
+      if (seen[k] || g.data[ny * g.w + nx] > thr) continue
+      seen[k] = 1; stack.push([nx, ny])
+    }
+  }
+  if (n < 30 || n > 0.5 * w * h) return null
+  const ux = mx / n, uy = my / n
+  const vx = mxx / n - ux * ux, vy = myy / n - uy * uy, vxy = mxy / n - ux * uy
+  // the view is axis-aligned after straightening, so compare the axis spreads (corrected for any slant)
+  const tr = vx + vy, det = vx * vy - vxy * vxy
+  const l1 = tr / 2 + Math.sqrt(Math.max(0, tr * tr / 4 - det)), l2 = tr / 2 - Math.sqrt(Math.max(0, tr * tr / 4 - det))
+  if (l2 <= 0) return null
+  void l1
+  return Math.sqrt(vy / vx)
+}

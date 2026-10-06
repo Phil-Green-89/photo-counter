@@ -238,3 +238,80 @@ test('other items keep using tap-one even when a model is installed', async ({ p
   await boxFirstItem(page)
   await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
 })
+
+// ---- straighten + hidden-end checks ----
+import { makeBundle } from './fixtures'
+
+async function straightenAround(page: Page, corners: [number, number][]) {
+  await page.getByRole('button', { name: 'Straighten' }).click()
+  for (const [x, y] of corners) {
+    const r = (await page.locator('.viewer img').boundingBox())!
+    const k = r.width / 900
+    await page.mouse.click(r.x + x * k, r.y + y * k)
+  }
+}
+const FACE: [number, number][] = [[20, 25], [880, 25], [880, 565], [20, 565]]
+
+test('straighten: tap 4 corners, then count on the straightened view', async ({ page }) => {
+  await page.goto('/')
+  const b = await makeBundle(page, [])
+  await page.getByTestId('camera').setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: b.png })
+  await expect(page.getByTestId('hint')).toContainText('Tap ONE')
+  await straightenAround(page, FACE)
+  await expect(page.getByTestId('hint')).toContainText('straightened view')
+  const r = (await page.locator('.viewer img').boundingBox())!
+  // first end sits near the top-left of the face
+  await page.mouse.click(r.x + r.width * (50 / 860), r.y + r.height * (45 / 540))
+  await expect(page.getByTestId('count')).toHaveText('88', { timeout: 20_000 })
+  await expect(page.getByTestId('check')).toHaveCount(0) // a complete bundle has nothing to check
+  await expect(page.getByRole('tab', { name: 'Straight' })).toBeVisible()
+})
+
+test('straighten: corners that do not make a box are rejected with a message', async ({ page }) => {
+  await page.goto('/')
+  const b = await makeBundle(page, [])
+  await page.getByTestId('camera').setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: b.png })
+  await straightenAround(page, [[100, 300], [300, 301], [500, 302], [700, 303]]) // all on one line
+  await expect(page.getByRole('status')).toContainText('make a box')
+  await expect(page.getByTestId('hint')).toContainText('4 corners')
+})
+
+test('hidden ends: empty spots inside the bundle are flagged and can be confirmed one by one', async ({ page }) => {
+  await page.goto('/')
+  const missing: [number, number][] = [[4, 3], [7, 4], [3, 5]]
+  const b = await makeBundle(page, missing)
+  await page.getByTestId('camera').setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: b.png })
+  await straightenAround(page, FACE)
+  await expect(page.getByTestId('hint')).toContainText('straightened view') // wait for the warp before measuring
+  const r = (await page.locator('.viewer img').boundingBox())!
+  await page.mouse.click(r.x + r.width * (50 / 860), r.y + r.height * (45 / 540))
+  await expect(page.getByTestId('count')).toHaveText(String(b.truth), { timeout: 20_000 })
+  await expect(page.getByTestId('check')).toContainText('3 to check')
+  await expect(page.locator('.gap')).toHaveCount(3)
+
+  // the same spots show on the original photo too
+  await page.getByRole('tab', { name: 'Photo' }).click()
+  await expect(page.locator('.gap')).toHaveCount(3)
+  await page.getByRole('tab', { name: 'Straight' }).click()
+
+  await page.getByTestId('check').click()
+  await expect(page.getByRole('dialog', { name: 'Check this spot' })).toBeVisible()
+  await page.getByRole('button', { name: 'Add tube' }).click() // there IS a tube pushed back here
+  await expect(page.getByTestId('count')).toHaveText(String(b.truth + 1))
+  await expect(page.getByRole('dialog', { name: 'Check this spot' })).toBeVisible() // moves straight on to the next
+  await page.getByRole('button', { name: 'Empty' }).click() // a real gap
+  await expect(page.getByTestId('count')).toHaveText(String(b.truth + 1))
+  await page.getByRole('button', { name: 'Empty' }).click()
+  await expect(page.getByTestId('check')).toHaveCount(0)
+  await expect(page.locator('.gap')).toHaveCount(0)
+  await expect(page.getByTestId('count')).toHaveText(String(b.truth + 1))
+})
+
+test('straighten: Original goes back to the plain photo', async ({ page }) => {
+  await page.goto('/')
+  const b = await makeBundle(page, [])
+  await page.getByTestId('camera').setInputFiles({ name: 'b.png', mimeType: 'image/png', buffer: b.png })
+  await straightenAround(page, FACE)
+  await page.getByRole('button', { name: 'Use original photo' }).click()
+  await expect(page.getByRole('button', { name: 'Straighten' })).toBeVisible()
+})

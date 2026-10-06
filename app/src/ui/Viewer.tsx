@@ -6,7 +6,7 @@ interface Props {
   src: string
   imgW: number
   imgH: number
-  mode: 'pick' | 'edit'
+  mode: 'pick' | 'edit' | 'corners'
   dots: Dot[]
   box: Box | null
   onBox: (b: Box) => void
@@ -14,6 +14,13 @@ interface Props {
   onTap?: (d: Dot) => void
   onAdd: (d: Dot) => void
   onRemove: (i: number) => void
+  /** spots that might hold a hidden end; shown as amber "?" rings */
+  gaps?: Dot[]
+  onGap?: (i: number) => void
+  /** the corner taps for straightening, drawn as numbered handles joined by a line */
+  corners?: Dot[]
+  /** centre and zoom in on a point; change `n` to trigger again */
+  focus?: { x: number; y: number; n: number } | null
   /** space reserved for the overlays above/below, so the photo is never hidden under them */
   insetTop?: number
   insetBottom?: number
@@ -48,6 +55,15 @@ export function Viewer(p: Props) {
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [p.src, p.imgW, p.imgH, p.insetTop, p.insetBottom])
+
+  // jump to a point (used to walk the user through spots that need a visual check)
+  useEffect(() => {
+    if (!p.focus) return
+    const r = host.current!.getBoundingClientRect()
+    const k = Math.max(view.k, fitK * 3.2)
+    const top = p.insetTop ?? 0, bottom = p.insetBottom ?? 0
+    setView({ k, tx: r.width / 2 - p.focus.x * k, ty: top + (r.height - top - bottom) / 2 - p.focus.y * k })
+  }, [p.focus?.n])
 
   const toImg = (cx: number, cy: number, v = view) => {
     const r = host.current!.getBoundingClientRect()
@@ -117,6 +133,7 @@ export function Viewer(p: Props) {
       if (p.mode === 'pick' && d && d.w > 6 && d.h > 6) p.onBox(d)
       else if (p.mode === 'pick' && !g.moved) p.onTap?.(toImg(e.clientX, e.clientY))
       else if (p.mode === 'edit' && !g.moved) p.onAdd(toImg(e.clientX, e.clientY))
+      else if (p.mode === 'corners' && !g.moved) p.onTap?.(toImg(e.clientX, e.clientY))
       setDraft(null)
       gesture.current = null
     } else {
@@ -144,6 +161,23 @@ export function Viewer(p: Props) {
         {shown && (
           <div class="box" style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, borderWidth: 3 / view.k, borderRadius: 6 / view.k }} />
         )}
+        {p.corners && p.corners.length > 0 && (
+          <svg class="poly" width={p.imgW} height={p.imgH} aria-hidden="true">
+            <polyline points={[...p.corners, ...(p.corners.length === 4 ? [p.corners[0]] : [])].map(c => `${c.x},${c.y}`).join(' ')}
+              fill={p.corners.length === 4 ? 'rgba(255,200,0,.12)' : 'none'} stroke="#ffc800" stroke-width="3" vector-effect="non-scaling-stroke" />
+          </svg>
+        )}
+        {p.corners?.map((c, i) => (
+          <div key={'c' + i} class="corner" style={{ left: c.x, top: c.y, transform: `translate(-50%,-50%) scale(${1 / view.k})` }}>{i + 1}</div>
+        ))}
+        {p.gaps?.map((g, i) => (
+          <button key={'g' + i} class="gap" aria-label={`Check spot ${i + 1}`}
+            style={{ left: g.x, top: g.y, width: 40, height: 40, transform: `translate(-50%,-50%) scale(${1 / view.k})` }}
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); p.onGap?.(i) }}>
+            <span class="q">?</span>
+          </button>
+        ))}
         {p.dots.map((d, i) => (
           <button key={i} class="dot" aria-label={`Remove ${i + 1}`}
             style={{ left: d.x, top: d.y, width: dotPx, height: dotPx, transform: `translate(-50%,-50%) scale(${1 / view.k})` }}

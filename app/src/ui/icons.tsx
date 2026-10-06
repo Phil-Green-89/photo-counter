@@ -14,7 +14,7 @@ function Svg({ size, stroke = 2, vb, children }: { size: number; stroke?: number
 /** Small UI glyphs (24px grid, 2px stroke). */
 export type UiIcon =
   | 'camera' | 'home' | 'undo' | 'up' | 'down' | 'share' | 'plus' | 'minus' | 'cloud' | 'lock'
-  | 'check' | 'x' | 'moon' | 'tap' | 'draw'
+  | 'check' | 'x' | 'moon' | 'tap' | 'draw' | 'grid'
 
 export function Icon({ name, size = 28 }: { name: UiIcon; size?: number }) {
   return (
@@ -42,6 +42,7 @@ export function Icon({ name, size = 28 }: { name: UiIcon; size?: number }) {
       {name === 'x' && <path d="m6 6 12 12M18 6 6 18" />}
       {name === 'moon' && <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z" />}
       {name === 'tap' && <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /></>}
+      {name === 'grid' && <><path d="M7 4h10l4 16H3z" /><path d="M5 12h14M9 4 7 20M15 4l2 16" /></>}
       {name === 'draw' && <><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3" /><circle cx="12" cy="12" r="2.2" /></>}
     </Svg>
   )
