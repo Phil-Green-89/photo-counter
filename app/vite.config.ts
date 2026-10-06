@@ -18,12 +18,15 @@ export default defineConfig({
         background_color: '#0b0f14',
         theme_color: '#0b0f14',
         icons: [
-          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'icon.svg', sizes: 'any', type: 'image/svg+xml' },
         ],
       },
       workbox: {
         // app shell is precached; the 14 MB wasm runtime and the model are cached on first use
-        globPatterns: ['**/*.{js,css,html,svg}'],
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
         runtimeCaching: [{
           urlPattern: ({ url }) => /\.(wasm|onnx)$/.test(url.pathname) || url.pathname.endsWith('/models/manifest.json'),
           handler: 'StaleWhileRevalidate',

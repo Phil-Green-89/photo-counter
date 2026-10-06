@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { Viewer } from './ui/Viewer'
+import { Icon, ItemIcon, Logo } from './ui/icons'
 import { autoContrast, countSimilar, toGray, type Box, type Dot, type Gray } from './infer/exemplar'
 import { lightingScore, type Lighting } from './infer/lighting'
 import { detect, detectorVersion, loadDetector } from './infer/detector'
@@ -40,6 +41,12 @@ export function App() {
   const photo = useRef<HTMLImageElement | null>(null)
   const [missed, setMissed] = useState(false)
   const canShare = syncConfig() !== null
+  const [toast, setToast] = useState('')
+  const [coach, setCoach] = useState(() => { try { return localStorage.getItem('pc.coach') !== '1' } catch { return true } })
+  const usual = items[0]
+
+  const flash = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 1800) }
+  const dismissCoach = () => { setCoach(false); try { localStorage.setItem('pc.coach', '1') } catch { /* ignore */ } }
 
   const refreshPending = () => pendingCount().then(setPending)
   const sync = () => syncPending().then(refreshPending)
@@ -62,7 +69,7 @@ export function App() {
     file.current = f
     const url = URL.createObjectURL(f)
     const img = new Image()
-    img.onerror = () => { URL.revokeObjectURL(url); setError('📷 ❌') }
+    img.onerror = () => { URL.revokeObjectURL(url); setError('bad photo') }
     img.onload = () => {
       const raw = toGray(img, img.naturalWidth, img.naturalHeight)
       setLight(lightingScore(raw))
@@ -124,7 +131,7 @@ export function App() {
     refreshPending()
   }
 
-  const rate = (up: boolean) => { setThumb(up); persist(up).then(maybeAsk) }
+  const rate = (up: boolean) => { setThumb(up); flash(up ? 'Saved' : 'Thanks, we will learn from this'); persist(up).then(maybeAsk) }
 
   /** Leaving a counted photo keeps the final dots even if the user never pressed 👍/👎. */
   const leave = (): Promise<void> => (step === 'edit' ? persist(thumb) : Promise.resolve())
@@ -164,6 +171,8 @@ export function App() {
   const goHome = () => { setStep('home'); leave().then(maybeAsk) }
   const camera = () => input.current?.click()
   const cur = items.find(i => i.id === item)!
+  const rest = items.filter(i => i.id !== usual.id)
+  const darkChip = light && light.bucket !== 'good' ? (light.bucket === 'poor' ? 'Dark' : 'Dim') : null
 
   return (
     <div class="app">
@@ -171,58 +180,105 @@ export function App() {
 
       {step === 'home' && (
         <div class="home">
-          <div class="grid">
-            {items.map(i => (
-              <button key={i.id} class={`tile ${i.id === item ? 'on' : ''}`} onClick={() => setItem(i.id)}>
-                <span class="ic">{i.icon}</span>{i.label}
-              </button>
-            ))}
-          </div>
-          {error && <div class="err">{error}</div>}
-          <div class="homebar">
-            <button class="shoot" onClick={camera} aria-label="Take photo">📷 {cur.icon}</button>
+          <header class="top-bar">
+            <div class="brand"><Logo /><span>Counter</span></div>
             {canShare && (
               <button class={`cloud ${consent ? 'on' : ''}`} aria-label="Share photos to improve counting"
                 onClick={() => answer(!consent)}>
-                {consent ? '☁️' : '🔒'}{consent && pending > 0 && <small>{pending}</small>}
+                <Icon name={consent ? 'cloud' : 'lock'} size={22} />
+                {consent && pending > 0 && <small>{pending}</small>}
               </button>
             )}
+          </header>
+
+          <div class="cards">
+            <button class={`tile usual ${usual.id === item ? 'on' : ''}`} onClick={() => setItem(usual.id)}>
+              <span class="art"><ItemIcon id={usual.id} size={76} /></span>
+              <span class="name">{usual.label}</span>
+              <span class="tag">Your usual</span>
+              {usual.id === item && <span class="tick"><Icon name="check" size={18} /></span>}
+            </button>
+            {rest.map(i => (
+              <button key={i.id} class={`tile ${i.id === item ? 'on' : ''} ${i.id === 'other' ? 'wide' : ''}`} onClick={() => setItem(i.id)}>
+                <span class="art"><ItemIcon id={i.id} size={46} /></span>
+                <span class="name">{i.label}</span>
+                {i.id === item && <span class="tick"><Icon name="check" size={16} /></span>}
+              </button>
+            ))}
+          </div>
+
+          {error && <div class="err"><Icon name="x" size={20} /> Couldn't open that photo. Try again.</div>}
+          <div class="cta-wrap">
+            <button class="shoot" onClick={camera} aria-label="Take photo">
+              <Icon name="camera" size={34} />
+              <span>Count {cur.label.toLowerCase()}</span>
+            </button>
           </div>
         </div>
       )}
 
       {step !== 'home' && (
-        <>
-          <div class="top">
-            {step === 'pick' ? <div class="hint">{missed ? '🤷 ' : ''}👆 Draw a box around ONE {cur.label.toLowerCase()}</div>
-              : <div class="count" aria-live="polite" data-testid="count">{dots.length}</div>}
-            {light && light.bucket !== 'good' && <div class="warn">🔦 {light.bucket === 'poor' ? 'Dark' : 'Dim'}</div>}
+        <div class="stage">
+          <Viewer src={src} imgW={size.w} imgH={size.h} mode={step} dots={dots} box={step === 'pick' ? box : null} onBox={run}
+            insetTop={step === 'pick' ? 96 : 132} insetBottom={116}
+            onAdd={d => { edit([...dots, d]); dismissCoach() }}
+            onRemove={i => { edit(dots.filter((_, j) => j !== i)); dismissCoach() }} />
+
+          <div class="hud">
+            {step === 'pick' ? (
+              <div class={`ask ${missed ? 'missed' : ''}`} data-testid="hint">
+                <span class="ask-ic"><Icon name="draw" size={26} /></span>
+                <span class="hint">{missed ? 'Nothing found. ' : ''}Draw a box around ONE {cur.label.toLowerCase().replace(/s$/, '')}</span>
+              </div>
+            ) : (
+              <div class="readout">
+                <div class="count" key={dots.length} aria-live="polite" data-testid="count">{dots.length}</div>
+                <div class="what"><ItemIcon id={item} size={22} /><span>{cur.label}</span></div>
+              </div>
+            )}
+            {darkChip && <div class="warn"><Icon name="moon" size={18} /> {darkChip}</div>}
           </div>
-          <Viewer src={src} imgW={size.w} imgH={size.h} mode={step} dots={dots} box={box} onBox={run}
-            onAdd={d => edit([...dots, d])}
-            onRemove={i => edit(dots.filter((_, j) => j !== i))} />
-          {busy && <div class="busy">…</div>}
-          <div class="bar">
-            <button aria-label="Home" onClick={goHome}>🏠</button>
+
+          {busy && <div class="busy"><div class="scan" /><div class="pill"><span class="spin" /> Counting</div></div>}
+          {toast && <div class="toast" role="status"><Icon name="check" size={18} /> {toast}</div>}
+
+          {step === 'edit' && coach && (
+            <div class="coach">
+              <div class="coach-row"><span class="chip rm"><i /></span> Tap a dot to remove</div>
+              <div class="coach-row"><span class="chip add"><i /></span> Tap empty space to add</div>
+              <div class="coach-row"><span class="chip pinch"><Icon name="plus" size={14} /></span> Pinch or + to zoom</div>
+              <button class="coach-ok" aria-label="Got it" onClick={dismissCoach}><Icon name="check" size={22} /></button>
+            </div>
+          )}
+
+          <nav class="dock">
+            <button class="d" aria-label="Home" onClick={goHome}><Icon name="home" /><span>Home</span></button>
             {step === 'edit' && <>
-              <button aria-label="Undo" disabled={!undo.current.length}
-                onClick={() => { const p = undo.current.pop(); if (p) { setDots(p); if (record.current) persist(thumb, p) } }}>↩️</button>
-              <button aria-label="Correct" class={thumb === true ? 'sel' : ''} onClick={() => rate(true)}>👍</button>
-              <button aria-label="Wrong" class={thumb === false ? 'sel' : ''} onClick={() => rate(false)}>👎</button>
-              <button aria-label="Share" onClick={share}>📤</button>
+              <button class="d" aria-label="Undo" disabled={!undo.current.length}
+                onClick={() => { const p = undo.current.pop(); if (p) { setDots(p); if (record.current) persist(thumb, p) } }}>
+                <Icon name="undo" /><span>Undo</span>
+              </button>
+              <button class={`d good ${thumb === true ? 'sel' : ''}`} aria-label="Correct" onClick={() => rate(true)}>
+                <Icon name="up" /><span>Right</span>
+              </button>
+              <button class={`d bad ${thumb === false ? 'sel' : ''}`} aria-label="Wrong" onClick={() => rate(false)}>
+                <Icon name="down" /><span>Wrong</span>
+              </button>
+              <button class="d" aria-label="Share" onClick={share}><Icon name="share" /><span>Share</span></button>
             </>}
-          </div>
-        </>
+          </nav>
+        </div>
       )}
 
       {asking && (
         <div class="modal" role="dialog" aria-label="Share photos">
           <div class="card">
-            <div class="big">📤 📷 ➜ 🎯</div>
+            <div class="big"><Icon name="camera" size={36} /><span>→</span><Icon name="tap" size={36} /></div>
             <p>Share your photos to make counting better?</p>
+            <small>Only the photo and your corrections. No name, no account.</small>
             <div class="yn">
-              <button class="yes" aria-label="Yes, share" onClick={() => answer(true)}>✅</button>
-              <button class="no" aria-label="No thanks" onClick={() => answer(false)}>❌</button>
+              <button class="no" aria-label="No thanks" onClick={() => answer(false)}><Icon name="x" size={34} /></button>
+              <button class="yes" aria-label="Yes, share" onClick={() => answer(true)}><Icon name="check" size={34} /></button>
             </div>
           </div>
         </div>

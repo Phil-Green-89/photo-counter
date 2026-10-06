@@ -43,8 +43,8 @@ test('tap a dot to remove it, tap empty space to add one, undo reverses', async 
   await page.locator('.dot').first().click()
   await expect(count).toHaveText(String(photo.truth - 1))
 
-  const v = (await page.locator('.viewer').boundingBox())!
-  await page.mouse.click(v.x + 8, v.y + v.height - 8) // empty corner of the viewer
+  const img = (await page.locator('.viewer img').boundingBox())!
+  await page.mouse.click(img.x + 6, img.y + 6) // empty top-left corner of the photo
   await expect(count).toHaveText(String(photo.truth))
 
   await page.getByRole('button', { name: 'Undo' }).click()
@@ -176,7 +176,7 @@ test('pipes: if the detector finds nothing the user can still draw a box', async
   await page.goto('/')
   const photo = await makePhoto(page)
   await page.getByTestId('camera').setInputFiles({ name: 'p.png', mimeType: 'image/png', buffer: photo.png })
-  await expect(page.locator('.hint')).toContainText('🤷', { timeout: 20_000 })
+  await expect(page.getByTestId('hint')).toContainText('Nothing found', { timeout: 20_000 })
   await boxFirstItem(page)
   await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
 })
