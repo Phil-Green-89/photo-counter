@@ -10,6 +10,8 @@ interface Props {
   dots: Dot[]
   box: Box | null
   onBox: (b: Box) => void
+  /** pick mode: a plain tap (no drag) on an item */
+  onTap?: (d: Dot) => void
   onAdd: (d: Dot) => void
   onRemove: (i: number) => void
   /** space reserved for the overlays above/below, so the photo is never hidden under them */
@@ -113,6 +115,7 @@ export function Viewer(p: Props) {
     if (ptrs.current.size === 0) {
       const d = draftRef.current
       if (p.mode === 'pick' && d && d.w > 6 && d.h > 6) p.onBox(d)
+      else if (p.mode === 'pick' && !g.moved) p.onTap?.(toImg(e.clientX, e.clientY))
       else if (p.mode === 'edit' && !g.moved) p.onAdd(toImg(e.clientX, e.clientY))
       setDraft(null)
       gesture.current = null

@@ -34,6 +34,53 @@ test('draw a box around one item and every similar item is counted', async ({ pa
   await expect(page.locator('.dot')).toHaveCount(photo.truth)
 })
 
+test('tap one pipe and every similar pipe is counted, no box needed', async ({ page }) => {
+  const photo = await load(page)
+  const r = (await page.locator('.viewer img').boundingBox())!
+  const k = r.width / 900
+  await page.mouse.click(r.x + 100 * k, r.y + 90 * k)
+  await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
+})
+
+test('tapping empty background asks the user to draw a box instead', async ({ page }) => {
+  await load(page)
+  const r = (await page.locator('.viewer img').boundingBox())!
+  await page.mouse.click(r.x + 8, r.y + 8)
+  await expect(page.getByTestId('hint')).toContainText('Draw a box')
+})
+
+test('several photos keep a running total', async ({ page }) => {
+  const photo = await load(page)
+  await boxFirstItem(page)
+  await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
+  await expect(page.getByTestId('total')).toHaveCount(0) // single photo: no total yet
+
+  // second photo
+  const second = await makePhoto(page, 4, 3)
+  await page.locator('.dot').first().click() // remove one in photo 1 first: total must use the final count
+  await page.getByRole('button', { name: 'Add another photo' }).click()
+  await page.getByTestId('camera').setInputFiles({ name: 'p2.png', mimeType: 'image/png', buffer: second.png })
+  await boxFirstItem(page)
+  await expect(page.getByTestId('count')).toHaveText(String(second.truth))
+  await expect(page.getByTestId('total')).toContainText(String(photo.truth - 1 + second.truth))
+  await expect(page.getByTestId('total')).toContainText('2 photos')
+
+  // home starts a fresh job
+  await page.getByRole('button', { name: 'Home' }).click()
+  await page.getByTestId('camera').setInputFiles({ name: 'p3.png', mimeType: 'image/png', buffer: second.png })
+  await boxFirstItem(page)
+  await expect(page.getByTestId('total')).toHaveCount(0)
+})
+
+test('cancelling the camera after Add photo does not double count', async ({ page }) => {
+  const photo = await load(page)
+  await boxFirstItem(page)
+  await page.getByRole('button', { name: 'Add another photo' }).click() // camera opens; user backs out (no file chosen)
+  await page.getByRole('button', { name: 'Add another photo' }).click()
+  await expect(page.getByTestId('total')).toHaveCount(0)
+  await expect(page.getByTestId('count')).toHaveText(String(photo.truth))
+})
+
 test('tap a dot to remove it, tap empty space to add one, undo reverses', async ({ page }) => {
   const photo = await load(page)
   await boxFirstItem(page)
