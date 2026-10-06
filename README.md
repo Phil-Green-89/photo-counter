@@ -55,6 +55,10 @@ Pipes and Rebar count automatically with a YOLO-nano model that runs in the brow
 Other items, or any photo where the model finds nothing, use the draw-a-box tap-one counter.
 The app looks for `app/public/models/manifest.json`; with no model installed it just uses tap-one.
 
+**Easiest:** open `training/train_pipes_colab.ipynb` in [Google Colab](https://colab.research.google.com/github/Phil-Green-89/photo-counter/blob/main/training/train_pipes_colab.ipynb), pick a T4 GPU, paste your free Roboflow key when asked, run all cells, and download the zip into `app/public/models/`.
+
+Or by hand:
+
 ```bash
 pip install -r training/requirements.txt          # in Colab/Kaggle for a GPU
 python training/prepare_data.py data/ --roboflow --synthetic 300   # needs a free ROBOFLOW_API_KEY
