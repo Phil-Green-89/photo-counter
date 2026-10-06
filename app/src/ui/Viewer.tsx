@@ -31,6 +31,7 @@ export function Viewer(p: Props) {
   useEffect(() => {
     const fit = () => {
       const r = host.current!.getBoundingClientRect()
+      if (!r.width || !r.height) return
       const k = Math.min(r.width / p.imgW, r.height / p.imgH)
       setFitK(k)
       setView({ k, tx: (r.width - p.imgW * k) / 2, ty: (r.height - p.imgH * k) / 2 })

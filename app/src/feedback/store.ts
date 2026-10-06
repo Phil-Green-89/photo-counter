@@ -14,6 +14,8 @@ export const ITEMS = [
 export type ItemId = typeof ITEMS[number]['id']
 
 const USE_KEY = 'pc.use'
+const CONSENT_KEY = 'pc.share'
+const DEVICE_KEY = 'pc.device'
 
 function safeGet(k: string): string | null { try { return localStorage.getItem(k) } catch { return null } }
 function safeSet(k: string, v: string) { try { localStorage.setItem(k, v) } catch { /* private mode */ } }
@@ -28,10 +30,24 @@ export function bumpUse(id: ItemId) {
   safeSet(USE_KEY, JSON.stringify(c))
 }
 
-/** Items most-used first; unused items keep their default order. */
+/** Items most-used first; ties and unused items keep their default order. */
 export function orderedItems() {
   const c = useCounts()
   return [...ITEMS].sort((a, b) => (c[b.id] ?? 0) - (c[a.id] ?? 0))
+}
+
+/** null = not asked yet, true/false = the user's answer to "share photos to improve counting?" */
+export function getConsent(): boolean | null {
+  const v = safeGet(CONSENT_KEY)
+  return v === null ? null : v === '1'
+}
+export function setConsent(v: boolean) { safeSet(CONSENT_KEY, v ? '1' : '0') }
+
+/** Random id, not tied to a person. Lets us see how many devices contribute, nothing more. */
+export function deviceId(): string {
+  let id = safeGet(DEVICE_KEY)
+  if (!id) { id = crypto.randomUUID(); safeSet(DEVICE_KEY, id) }
+  return id
 }
 
 export interface FeedbackRecord {
@@ -39,6 +55,8 @@ export interface FeedbackRecord {
   at: number
   item: ItemId
   image: Blob
+  imgW: number
+  imgH: number
   exemplar: Box
   modelDots: Dot[]
   finalDots: Dot[]
@@ -60,14 +78,45 @@ function db(): Promise<IDBDatabase> {
   })
 }
 
-export async function saveFeedback(rec: FeedbackRecord): Promise<void> {
+function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  return db().then(d => new Promise<T>((res, rej) => {
+    const t = d.transaction('feedback', mode)
+    const r = fn(t.objectStore('feedback'))
+    t.oncomplete = () => res(r.result)
+    t.onerror = () => rej(t.error)
+    t.onabort = () => rej(t.error)
+  }))
+}
+
+/** Storage can be unavailable (private mode, quota). Counting must keep working, so never throw. */
+export async function saveFeedback(rec: FeedbackRecord): Promise<number | null> {
+  try { return (await tx('readwrite', s => s.add(rec))) as number } catch { return null }
+}
+
+/** Replace an existing record (e.g. the user changed 👍 to 👎 or kept editing dots). */
+export async function updateFeedback(rec: FeedbackRecord): Promise<void> {
+  try { await tx('readwrite', s => s.put(rec)) } catch { /* ignore */ }
+}
+
+export async function listPending(): Promise<FeedbackRecord[]> {
   try {
-    const d = await db()
-    await new Promise<void>((res, rej) => {
-      const tx = d.transaction('feedback', 'readwrite')
-      tx.objectStore('feedback').add(rec)
-      tx.oncomplete = () => res()
-      tx.onerror = () => rej(tx.error)
-    })
-  } catch { /* storage unavailable: counting still works */ }
+    const all = (await tx('readonly', s => s.index('uploaded').getAll(0))) as FeedbackRecord[]
+    return all.sort((a, b) => priority(b) - priority(a) || a.at - b.at)
+  } catch { return [] }
+}
+
+/** Where the model is weakest uploads first: poor light, then dim, then thumbs-down. */
+function priority(r: FeedbackRecord): number {
+  return (r.lighting.bucket === 'poor' ? 4 : r.lighting.bucket === 'dim' ? 2 : 0) + (r.thumbsUp === false ? 1 : 0)
+}
+
+export async function markUploaded(id: number): Promise<void> {
+  try {
+    const rec = (await tx('readonly', s => s.get(id))) as FeedbackRecord | undefined
+    if (rec) await tx('readwrite', s => s.put({ ...rec, uploaded: 1, image: new Blob() }))
+  } catch { /* ignore */ }
+}
+
+export async function pendingCount(): Promise<number> {
+  try { return (await tx('readonly', s => s.index('uploaded').count(0))) as number } catch { return 0 }
 }
