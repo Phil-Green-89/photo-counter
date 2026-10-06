@@ -129,3 +129,26 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .add-photo span { margin-left: 4px; }
 .coach { bottom: 176px; }
 .toast { bottom: 176px; }
+
+.poly { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.corner { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 900; font-size: 15px; display: grid; place-items: center; box-shadow: 0 0 0 2px #000, 0 2px 10px rgba(0, 0, 0, .6); pointer-events: none; }
+.gap { position: absolute; display: grid; place-items: center; border-radius: 50%; }
+.gap .q { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 3px dashed #ff8a00; background: rgba(0, 0, 0, .55); color: #ffb454; font-weight: 900; font-size: 16px; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .7); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.18); } }
+.tabs { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, .6); border: 1.5px solid var(--line); pointer-events: auto; align-self: flex-start; }
+.tabs button { padding: 7px 14px; border-radius: 999px; font-weight: 800; font-size: 14px; color: var(--muted); }
+.tabs button.on { background: var(--accent); color: var(--accent-ink); }
+.check { pointer-events: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; border-radius: 999px; background: #ff8a00; color: #1b1000; font-weight: 800; font-size: 15px; box-shadow: 0 4px 14px rgba(0, 0, 0, .4); }
+.check b { width: 24px; height: 24px; border-radius: 50%; background: #1b1000; color: #ffb454; display: grid; place-items: center; font-size: 13px; }
+.sheet { position: absolute; left: 14px; right: 14px; bottom: 112px; padding: 16px; border-radius: 26px; background: var(--glass); backdrop-filter: blur(14px); border: 1.5px solid #ff8a00; animation: rise .25s var(--ease); z-index: 3; }
+.sheet p { margin: 0 0 12px; font-size: 19px; font-weight: 800; text-align: center; }
+.sheet .row { display: flex; gap: 12px; }
+.sheet .row button { flex: 1; height: 68px; border-radius: 20px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 17px; }
+.sheet .yes { background: var(--good); color: var(--accent-ink); }
+.sheet .no { background: var(--raised); border: 1.5px solid var(--line); }
+.secondary { position: absolute; left: 14px; bottom: 112px; height: 48px; padding: 0 16px 0 12px; display: inline-flex; align-items: center; gap: 8px; border-radius: 24px; background: var(--glass); backdrop-filter: blur(12px); border: 1.5px solid var(--line); font-weight: 800; font-size: 15px; }
+
+.hud-left { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+.hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex: none; }
+.side { pointer-events: auto; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px 8px 11px; border-radius: 999px; background: rgba(0, 0, 0, .6); border: 1.5px solid var(--line); font-weight: 800; font-size: 14px; }
+.readout { align-items: flex-start; }

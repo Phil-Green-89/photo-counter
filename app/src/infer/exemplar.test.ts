@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoContrast, countSimilar, estimateItemBox } from './exemplar'
+import { autoContrast, countSimilar, estimateItemBox, holeAspect, type Gray } from './exemplar'
 import { discs, grid } from './testutil'
 
 describe('countSimilar', () => {
@@ -74,5 +74,27 @@ describe('estimateItemBox (tap one item)', () => {
 
   it('returns null on a featureless photo', () => {
     expect(estimateItemBox(discs(280, 190, []), { x: 100, y: 90 })).toBeNull()
+  })
+})
+
+describe('holeAspect', () => {
+  const ellipse = (rx: number, ry: number): Gray => {
+    const w = 160, h = 160, data = new Float32Array(w * h).fill(190)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (((x - 80) / rx) ** 2 + ((y - 80) / ry) ** 2 <= 1) data[y * w + x] = 20
+    return { data, w, h, scale: 1 }
+  }
+  it('is 1 for a round opening', () => {
+    expect(holeAspect(ellipse(14, 14), { x: 80, y: 80 })!).toBeCloseTo(1, 1)
+  })
+  it('reports how squashed a flat oval is (height / width)', () => {
+    expect(holeAspect(ellipse(20, 8), { x: 80, y: 80 })!).toBeCloseTo(0.4, 1)
+    expect(holeAspect(ellipse(8, 20), { x: 80, y: 80 })!).toBeCloseTo(2.5, 0)
+  })
+  it('works when the tap is a little off centre', () => {
+    expect(holeAspect(ellipse(20, 10), { x: 86, y: 83 })!).toBeCloseTo(0.5, 1)
+  })
+  it('returns null when there is no dark opening', () => {
+    const flat: Gray = { data: new Float32Array(160 * 160).fill(120), w: 160, h: 160, scale: 1 }
+    expect(holeAspect(flat, { x: 80, y: 80 })).toBeNull()
   })
 })

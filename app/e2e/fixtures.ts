@@ -23,3 +23,21 @@ export async function makePhoto(
   }, { cols, rows, gain, w, h })
   return { png: Buffer.from(b64, 'base64'), w, h, truth: cols * rows }
 }
+
+/** A tidy hex bundle (11 x 8) with the listed [col,row] ends left out, drawn on a 900x700 canvas. */
+export async function makeBundle(page: Page, missing: [number, number][]): Promise<{ png: Buffer; truth: number; total: number }> {
+  const b64: string = await page.evaluate(({ missing }) => {
+    const c = document.createElement('canvas'); c.width = 900; c.height = 700
+    const x = c.getContext('2d')!
+    x.fillStyle = '#3b3a38'; x.fillRect(0, 0, 900, 700)
+    for (let r = 0; r < 8; r++) for (let q = 0; q < 11; q++) {
+      if (missing.some(([mc, mr]) => mc === q && mr === r)) continue
+      const cx = 70 + q * 72 + (r % 2) * 36, cy = 70 + r * 62
+      const g = x.createRadialGradient(cx, cy, 6, cx, cy, 31)
+      g.addColorStop(0, '#111'); g.addColorStop(0.55, '#222'); g.addColorStop(0.6, '#c97b3a'); g.addColorStop(1, '#e8a468')
+      x.fillStyle = g; x.beginPath(); x.arc(cx, cy, 31, 0, 7); x.fill()
+    }
+    return c.toDataURL('image/png').split(',')[1]
+  }, { missing })
+  return { png: Buffer.from(b64, 'base64'), truth: 88 - missing.length, total: 88 }
+}
