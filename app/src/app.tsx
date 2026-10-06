@@ -1,8 +1,12 @@
-import { useRef, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { Viewer } from './ui/Viewer'
 import { autoContrast, countSimilar, toGray, type Box, type Dot, type Gray } from './infer/exemplar'
 import { lightingScore, type Lighting } from './infer/lighting'
-import { bumpUse, orderedItems, saveFeedback, type ItemId } from './feedback/store'
+import {
+  bumpUse, getConsent, orderedItems, pendingCount, saveFeedback, setConsent, updateFeedback,
+  type FeedbackRecord, type ItemId,
+} from './feedback/store'
+import { syncConfig, syncPending } from './feedback/sync'
 import './app.css'
 
 type Step = 'home' | 'pick' | 'edit'
@@ -19,27 +23,50 @@ export function App() {
   const [light, setLight] = useState<Lighting | null>(null)
   const [thumb, setThumb] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [consent, setConsentState] = useState(getConsent())
+  const [pending, setPending] = useState(0)
   const file = useRef<File | null>(null)
   const gray = useRef<Gray | null>(null)
   const modelDots = useRef<Dot[]>([])
   const undo = useRef<Dot[][]>([])
+  const record = useRef<FeedbackRecord | null>(null)
   const input = useRef<HTMLInputElement>(null)
+  const canShare = syncConfig() !== null
+
+  const refreshPending = () => pendingCount().then(setPending)
+  const sync = () => syncPending().then(refreshPending)
+
+  useEffect(() => {
+    refreshPending()
+    sync()
+    window.addEventListener('online', sync)
+    return () => window.removeEventListener('online', sync)
+  }, [])
 
   const onFile = (e: Event) => {
-    const f = (e.target as HTMLInputElement).files?.[0]
+    const target = e.target as HTMLInputElement
+    const f = target.files?.[0]
+    target.value = ''
     if (!f) return
+    leave()
+    setError('')
     file.current = f
     const url = URL.createObjectURL(f)
     const img = new Image()
+    img.onerror = () => { URL.revokeObjectURL(url); setError('📷 ❌') }
     img.onload = () => {
+      const raw = toGray(img, img.naturalWidth, img.naturalHeight)
+      setLight(lightingScore(raw))
+      gray.current = autoContrast(raw)
       setSize({ w: img.naturalWidth, h: img.naturalHeight })
-      gray.current = autoContrast(toGray(img, img.naturalWidth, img.naturalHeight))
-      setLight(lightingScore(toGray(img, img.naturalWidth, img.naturalHeight)))
-      setSrc(url); setBox(null); setDots([]); setThumb(null); undo.current = []
+      if (src) URL.revokeObjectURL(src)
+      setSrc(url); setBox(null); setDots([]); setThumb(null)
+      undo.current = []; record.current = null
       setStep('pick')
     }
     img.src = url
-    ;(e.target as HTMLInputElement).value = ''
   }
 
   const run = (b: Box) => {
@@ -55,15 +82,33 @@ export function App() {
 
   const edit = (next: Dot[]) => { undo.current.push(dots); setDots(next) }
 
-  const finish = async (up: boolean | null) => {
-    setThumb(up)
-    if (file.current && box && light) {
-      await saveFeedback({
-        at: Date.now(), item, image: file.current, exemplar: box,
-        modelDots: modelDots.current, finalDots: dots, thumbsUp: up,
-        lighting: light, modelVersion: MODEL_VERSION, uploaded: 0,
-      })
+  /** Create or update this photo's feedback record with the current dots and 👍/👎. */
+  const persist = async (up: boolean | null, finalDots: Dot[] = dots) => {
+    if (!file.current || !box || !light) return
+    const rec: FeedbackRecord = {
+      ...(record.current ?? {}), at: record.current?.at ?? Date.now(), item, image: file.current,
+      imgW: size.w, imgH: size.h, exemplar: box, modelDots: modelDots.current, finalDots,
+      thumbsUp: up, lighting: light, modelVersion: MODEL_VERSION, uploaded: 0,
     }
+    if (record.current?.id !== undefined) await updateFeedback(rec)
+    else rec.id = (await saveFeedback(rec)) ?? undefined
+    record.current = rec
+    refreshPending()
+  }
+
+  const rate = (up: boolean) => { setThumb(up); persist(up).then(maybeAsk) }
+
+  /** Leaving a counted photo keeps the final dots even if the user never pressed 👍/👎. */
+  const leave = (): Promise<void> => (step === 'edit' ? persist(thumb) : Promise.resolve())
+
+  const maybeAsk = () => {
+    if (canShare && getConsent() === null) setAsking(true)
+    else sync()
+  }
+
+  const answer = (yes: boolean) => {
+    setConsent(yes); setConsentState(yes); setAsking(false)
+    if (yes) sync()
   }
 
   const share = async () => {
@@ -88,12 +133,13 @@ export function App() {
     else { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; a.click() }
   }
 
+  const goHome = () => { setStep('home'); leave().then(maybeAsk) }
   const camera = () => input.current?.click()
   const cur = items.find(i => i.id === item)!
 
   return (
     <div class="app">
-      <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
+      <input ref={input} data-testid="camera" type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
 
       {step === 'home' && (
         <div class="home">
@@ -104,7 +150,16 @@ export function App() {
               </button>
             ))}
           </div>
-          <button class="shoot" onClick={camera}>📷 {cur.icon}</button>
+          {error && <div class="err">{error}</div>}
+          <div class="homebar">
+            <button class="shoot" onClick={camera} aria-label="Take photo">📷 {cur.icon}</button>
+            {canShare && (
+              <button class={`cloud ${consent ? 'on' : ''}`} aria-label="Share photos to improve counting"
+                onClick={() => answer(!consent)}>
+                {consent ? '☁️' : '🔒'}{consent && pending > 0 && <small>{pending}</small>}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -112,7 +167,7 @@ export function App() {
         <>
           <div class="top">
             {step === 'pick' ? <div class="hint">👆 Draw a box around ONE {cur.label.toLowerCase()}</div>
-              : <div class="count" aria-live="polite">{dots.length}</div>}
+              : <div class="count" aria-live="polite" data-testid="count">{dots.length}</div>}
             {light && light.bucket !== 'good' && <div class="warn">🔦 {light.bucket === 'poor' ? 'Dark' : 'Dim'}</div>}
           </div>
           <Viewer src={src} imgW={size.w} imgH={size.h} mode={step} dots={dots} box={box} onBox={run}
@@ -120,15 +175,29 @@ export function App() {
             onRemove={i => edit(dots.filter((_, j) => j !== i))} />
           {busy && <div class="busy">…</div>}
           <div class="bar">
-            <button onClick={() => { setStep('home') }}>🏠</button>
+            <button aria-label="Home" onClick={goHome}>🏠</button>
             {step === 'edit' && <>
-              <button disabled={!undo.current.length} onClick={() => { const p = undo.current.pop(); if (p) setDots(p) }}>↩️</button>
-              <button class={thumb === true ? 'sel' : ''} onClick={() => finish(true)}>👍</button>
-              <button class={thumb === false ? 'sel' : ''} onClick={() => finish(false)}>👎</button>
-              <button onClick={share}>📤</button>
+              <button aria-label="Undo" disabled={!undo.current.length}
+                onClick={() => { const p = undo.current.pop(); if (p) { setDots(p); if (record.current) persist(thumb, p) } }}>↩️</button>
+              <button aria-label="Correct" class={thumb === true ? 'sel' : ''} onClick={() => rate(true)}>👍</button>
+              <button aria-label="Wrong" class={thumb === false ? 'sel' : ''} onClick={() => rate(false)}>👎</button>
+              <button aria-label="Share" onClick={share}>📤</button>
             </>}
           </div>
         </>
+      )}
+
+      {asking && (
+        <div class="modal" role="dialog" aria-label="Share photos">
+          <div class="card">
+            <div class="big">📤 📷 ➜ 🎯</div>
+            <p>Share your photos to make counting better?</p>
+            <div class="yn">
+              <button class="yes" aria-label="Yes, share" onClick={() => answer(true)}>✅</button>
+              <button class="no" aria-label="No thanks" onClick={() => answer(false)}>❌</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

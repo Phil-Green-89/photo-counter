@@ -28,3 +28,18 @@ button { font: inherit; color: inherit; border: 0; cursor: pointer; }
 .bar button { flex: 1; height: 64px; border-radius: 18px; background: #1c2530; font-size: 30px; }
 .bar button:disabled { opacity: .35; }
 .bar button.sel { background: #22c55e; }
+
+.homebar { display: flex; gap: 12px; }
+.homebar .shoot { flex: 1; }
+.cloud { width: 110px; border-radius: 28px; background: #1c2530; font-size: 44px; position: relative; }
+.cloud.on { background: #14301f; }
+.cloud small { position: absolute; top: 8px; right: 12px; font-size: 18px; background: #f59e0b; color: #000; border-radius: 10px; padding: 0 7px; }
+.err { text-align: center; font-size: 40px; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: grid; place-items: center; padding: 24px; }
+.card { background: #1c2530; border-radius: 28px; padding: 28px; text-align: center; max-width: 380px; width: 100%; }
+.card .big { font-size: 44px; }
+.card p { font-size: 22px; margin: 16px 0 24px; }
+.yn { display: flex; gap: 14px; }
+.yn button { flex: 1; height: 96px; border-radius: 22px; font-size: 52px; }
+.yn .yes { background: #22c55e; }
+.yn .no { background: #3a4452; }

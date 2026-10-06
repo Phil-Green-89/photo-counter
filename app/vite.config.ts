@@ -1,8 +1,11 @@
 import preact from '@preact/preset-vite'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  // GitHub Pages serves from /<repo>/, so CI sets BASE_PATH; locally it is '/'
+  base: process.env.BASE_PATH ?? '/',
+  test: { environment: 'happy-dom', include: ['src/**/*.test.ts'] },
   plugins: [
     preact(),
     VitePWA({
